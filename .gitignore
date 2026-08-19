@@ -1,0 +1,20 @@
+# R and RStudio session files
+.RData
+.Rhistory
+.Ruserdata
+.Rproj.user/
+
+# Local package libraries and caches
+renv/library/
+renv/staging/
+.r_libs/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local QA and temporary files
+.docx_qa/
+*.tmp
+~$*.docx
