@@ -1,0 +1,15 @@
+Selected model: SARIMA(2,1,0) x (1,0,1)[12]
+Differencing family: d=1, D=0
+Fit method: ML
+Residual variance: 0.334657
+AICc (within-family use only): 329.0999
+BIC (within-family use only): 344.6900
+Ljung-Box p-values at lags 12, 24, and 36: 0.2192, 0.1294, 0.0982
+Aggregate validation RMSE: 5.6043
+Aggregate validation MAE: 4.5275
+
+Coefficients:
+ar1 = 0.895161 (SE = 0.073388, p = 3.20073e-34)
+ar2 = -0.222731 (SE = 0.074118, p = 0.00265517)
+sar1 = 0.979430 (SE = 0.026143, p = 3.43544e-307)
+sma1 = -0.863401 (SE = 0.086615, p = 2.09743e-23)

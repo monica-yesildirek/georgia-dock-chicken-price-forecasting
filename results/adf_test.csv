@@ -1,3 +1,4 @@
-"Series","P.value"
-"Original series",0.885186731614532
-"Lag-12 differenced series",0.01
+"Series","Lags","Test.Statistic","P.value"
+"Original series",5,-0.459898303957227,0.885186731614532
+"Ordinary difference (d=1, D=0)",5,-5.60351857925116,0.01
+"Seasonal difference (d=0, D=1)",5,-3.65637562658087,0.01

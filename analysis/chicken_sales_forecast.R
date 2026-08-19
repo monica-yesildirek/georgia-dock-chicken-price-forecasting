@@ -3,7 +3,7 @@
 # Reproducible portfolio analysis
 ############################################################
 
-required_packages <- c("astsa", "forecast", "fUnitRoots")
+required_packages <- c("forecast", "fUnitRoots")
 missing_packages <- required_packages[
   !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)
 ]
@@ -48,14 +48,12 @@ data_dir <- file.path(project_root, "data")
 figure_dir <- file.path(project_root, "figures")
 result_dir <- file.path(project_root, "results")
 
-# astsa uses a multiplication symbol in diagnostic plot labels. Explicitly
-# select a UTF-8 Windows locale when available so the symbol renders cleanly.
+dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
+
 if (.Platform$OS.type == "windows") {
   try(Sys.setlocale("LC_CTYPE", "English_United States.utf8"), silent = TRUE)
 }
-
-dir.create(figure_dir, recursive = TRUE, showWarnings = FALSE)
-dir.create(result_dir, recursive = TRUE, showWarnings = FALSE)
 
 ############################################################
 # 1. LOAD AND VALIDATE DATA
@@ -91,12 +89,16 @@ X <- ts(
   frequency = 12
 )
 
+ordinary_difference <- diff(X)
+seasonal_difference <- diff(X, lag = 12)
+
 ############################################################
 # 2. SHARED FIGURE STYLE
 ############################################################
 
 report_teal <- "#156082"
 accent_orange <- "#C55A11"
+soft_teal <- "#DDEBF7"
 report_font <- "sans"
 
 if (.Platform$OS.type == "windows") {
@@ -109,7 +111,7 @@ if (.Platform$OS.type == "windows") {
   }
 }
 
-report_style <- function() {
+report_style <- function(mar = c(4.5, 4.5, 3, 1)) {
   par(
     family = report_font,
     col = report_teal,
@@ -119,10 +121,10 @@ report_style <- function() {
     fg = "black",
     lwd = 1.5,
     font.main = 2,
-    cex.main = 1.15,
+    cex.main = 1.10,
     cex.lab = 1,
-    cex.axis = 0.9,
-    mar = c(4.5, 4.5, 3, 1),
+    cex.axis = 0.88,
+    mar = mar,
     mgp = c(2.6, 0.8, 0),
     las = 1,
     bty = "l"
@@ -148,7 +150,7 @@ report_style()
 plot(
   X,
   xlab = "Year",
-  ylab = "Chicken price",
+  ylab = "Chicken price (cents per pound)",
   main = "Monthly Chicken Price Series",
   col = report_teal,
   lwd = 1.5,
@@ -170,57 +172,73 @@ acf(
 )
 dev.off()
 
-Y <- diff(X, lag = 12)
-
-open_png("Figure_03_Seasonal_Difference_ACF.png", 7.5, 7)
-report_style()
-par(mfrow = c(2, 1), mar = c(3.8, 4.5, 2.7, 1))
+open_png("Figure_03_Differencing_Comparison.png", 8, 7.5)
+report_style(c(3.5, 4.2, 2.6, 1))
+par(mfrow = c(2, 2))
+plot(
+  ordinary_difference,
+  xlab = "Year",
+  ylab = "First difference",
+  main = "Ordinary Difference",
+  col = report_teal,
+  lwd = 1.4
+)
 acf(
-  Y,
+  ordinary_difference,
   lag.max = 48,
   xlab = "Lag (years)",
   ylab = "ACF",
-  main = "Sample ACF of the Seasonally Differenced Series",
+  main = "ACF: Ordinary Difference",
   col = report_teal,
   ci.col = accent_orange,
-  lwd = 1.5
+  lwd = 1.4
 )
 plot(
-  Y,
+  seasonal_difference,
   xlab = "Year",
   ylab = "Lag-12 difference",
-  main = "Seasonally Differenced Chicken Series",
+  main = "Seasonal Difference",
   col = report_teal,
-  lwd = 1.5,
-  xaxp = c(2004, 2016, 6)
+  lwd = 1.4
+)
+acf(
+  seasonal_difference,
+  lag.max = 48,
+  xlab = "Lag (years)",
+  ylab = "ACF",
+  main = "ACF: Seasonal Difference",
+  col = report_teal,
+  ci.col = accent_orange,
+  lwd = 1.4
 )
 par(mfrow = c(1, 1))
 dev.off()
 
-adf_original <- fUnitRoots::adfTest(X, lags = 5, type = "c")
-adf_seasonal <- fUnitRoots::adfTest(Y, lags = 5, type = "c")
-adf_results <- data.frame(
-  Series = c("Original series", "Lag-12 differenced series"),
-  P.value = c(
-    as.numeric(adf_original@test$p.value),
-    as.numeric(adf_seasonal@test$p.value)
+adf_test <- function(series, label) {
+  test <- suppressWarnings(
+    fUnitRoots::adfTest(series, lags = 5, type = "c")
   )
-)
-write.csv(
-  adf_results,
-  file.path(result_dir, "adf_test.csv"),
-  row.names = FALSE
-)
+  data.frame(
+    Series = label,
+    Lags = 5,
+    Test.Statistic = as.numeric(test@test$statistic),
+    P.value = as.numeric(test@test$p.value),
+    stringsAsFactors = FALSE
+  )
+}
 
-############################################################
-# 4. MODEL IDENTIFICATION
-############################################################
+adf_results <- rbind(
+  adf_test(X, "Original series"),
+  adf_test(ordinary_difference, "Ordinary difference (d=1, D=0)"),
+  adf_test(seasonal_difference, "Seasonal difference (d=0, D=1)")
+)
+write.csv(adf_results, file.path(result_dir, "adf_test.csv"), row.names = FALSE)
 
-open_png("Figure_04_ACF_PACF_Stationary_Series.png", 8, 4.5)
+open_png("Figure_04_Ordinary_Difference_ACF_PACF.png", 8, 4.5)
 report_style()
 par(mfrow = c(1, 2), mar = c(4.5, 4.3, 3, 1))
 acf(
-  Y,
+  ordinary_difference,
   lag.max = 48,
   main = "Sample ACF",
   xlab = "Lag (years)",
@@ -230,7 +248,7 @@ acf(
   lwd = 1.5
 )
 pacf(
-  Y,
+  ordinary_difference,
   lag.max = 48,
   main = "Sample PACF",
   xlab = "Lag (years)",
@@ -242,246 +260,752 @@ pacf(
 par(mfrow = c(1, 1))
 dev.off()
 
-auto_output <- capture.output(
-  auto_search <- forecast::auto.arima(
-    Y,
-    stationary = TRUE,
-    seasonal = TRUE,
-    ic = "aicc",
-    trace = TRUE,
-    stepwise = FALSE,
-    approximation = FALSE
-  )
-)
-writeLines(auto_output, file.path(result_dir, "auto_arima_trace.txt"))
-
 ############################################################
-# 5. CANDIDATE FITTING AND COMPARISON
+# 4. THEORY-DRIVEN CANDIDATE SET
 ############################################################
 
-final_output <- capture.output(
-  final_fit <- astsa::sarima(
-    X, 3, 0, 0, 0, 1, 1, 12,
-    details = FALSE,
-    no.constant = FALSE
-  )
-)
-competing_output <- capture.output(
-  competing_fit <- astsa::sarima(
-    X, 2, 0, 1, 0, 1, 1, 12,
-    details = FALSE,
-    no.constant = FALSE
-  )
-)
-simpler_output <- capture.output(
-  simpler_fit <- astsa::sarima(
-    X, 2, 0, 0, 0, 1, 1, 12,
-    details = FALSE,
-    no.constant = FALSE
-  )
+candidate_specs <- data.frame(
+  Model.ID = c(
+    "sd_ar2", "sd_ar3", "sd_arma21",
+    "od_ar1", "od_ar2", "od_ar3", "od_arma21", "od_ar2_sarma11"
+  ),
+  Model = c(
+    "SARIMA(2,0,0) x (0,1,1)[12] + trend",
+    "SARIMA(3,0,0) x (0,1,1)[12] + trend",
+    "SARIMA(2,0,1) x (0,1,1)[12] + trend",
+    "SARIMA(1,1,0) x (1,0,0)[12]",
+    "SARIMA(2,1,0) x (1,0,0)[12]",
+    "SARIMA(3,1,0) x (1,0,0)[12]",
+    "SARIMA(2,1,1) x (1,0,0)[12]",
+    "SARIMA(2,1,0) x (1,0,1)[12]"
+  ),
+  Family = c(
+    rep("d=0, D=1", 3),
+    rep("d=1, D=0", 5)
+  ),
+  p = c(2, 3, 2, 1, 2, 3, 2, 2),
+  d = c(0, 0, 0, 1, 1, 1, 1, 1),
+  q = c(0, 0, 1, 0, 0, 0, 1, 0),
+  P = c(0, 0, 0, 1, 1, 1, 1, 1),
+  D = c(1, 1, 1, 0, 0, 0, 0, 0),
+  Q = c(1, 1, 1, 0, 0, 0, 0, 1),
+  Trend = c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE, FALSE),
+  Identification.Basis = c(
+    "Parsimonious seasonal-difference AR benchmark",
+    "Seasonal-difference PACF and AICc candidate",
+    "Seasonal-difference mixed ARMA candidate",
+    "Lower-order ordinary-difference AR benchmark",
+    "PACF cutoff near lag 2 with seasonal AR dependence",
+    "Higher-order AR check around the PACF cutoff",
+    "Mixed ARMA check around the PACF cutoff",
+    "Residual-driven seasonal MA refinement of the AR(2) model"
+  ),
+  stringsAsFactors = FALSE
 )
 
-# External benchmark retained from the written report.
-benchmark_output <- capture.output(
-  benchmark_fit <- astsa::sarima(
-    X, 2, 1, 0, 1, 0, 0, 12,
-    details = FALSE,
-    no.constant = FALSE
-  )
-)
+multiply_polynomials <- function(first, second) {
+  result <- numeric(length(first) + length(second) - 1)
+  for (i in seq_along(first)) {
+    for (j in seq_along(second)) {
+      result[i + j - 1] <- result[i + j - 1] + first[i] * second[j]
+    }
+  }
+  result
+}
 
-writeLines(final_output, file.path(result_dir, "final_model_summary.txt"))
-writeLines(
-  competing_output,
-  file.path(result_dir, "competing_model_summary.txt")
-)
-writeLines(simpler_output, file.path(result_dir, "simpler_model_summary.txt"))
+fit_candidate <- function(series, spec) {
+  methods <- c("ML", "CSS-ML", "CSS")
+  errors <- character(0)
 
-tidy_coefficients <- function(fit, model_name) {
-  coefficient_table <- as.data.frame(fit$t.table)
-  data.frame(
-    Model = model_name,
-    Parameter = rownames(coefficient_table),
-    Estimate = coefficient_table[, 1],
-    Standard.Error = coefficient_table[, 2],
-    t.value = coefficient_table[, 3],
-    p.value = coefficient_table[, 4],
-    row.names = NULL,
-    check.names = FALSE
+  for (fit_method in methods) {
+    fit <- try(
+      suppressWarnings({
+        if (isTRUE(spec$Trend)) {
+          forecast::Arima(
+            series,
+            order = c(spec$p, spec$d, spec$q),
+            seasonal = list(
+              order = c(spec$P, spec$D, spec$Q),
+              period = 12
+            ),
+            xreg = seq_along(series),
+            include.mean = FALSE,
+            method = fit_method
+          )
+        } else {
+          forecast::Arima(
+            series,
+            order = c(spec$p, spec$d, spec$q),
+            seasonal = list(
+              order = c(spec$P, spec$D, spec$Q),
+              period = 12
+            ),
+            include.mean = FALSE,
+            include.drift = FALSE,
+            method = fit_method
+          )
+        }
+      }),
+      silent = TRUE
+    )
+
+    if (!inherits(fit, "try-error")) {
+      attr(fit, "fit_method") <- fit_method
+      return(fit)
+    }
+    errors <- c(errors, paste(fit_method, as.character(fit)))
+  }
+
+  stop(
+    "Candidate fit failed for ", spec$Model, ": ",
+    paste(errors, collapse = " | "),
+    call. = FALSE
   )
 }
 
-write.csv(
-  tidy_coefficients(final_fit, "SARIMA(3,0,0)x(0,1,1)[12]"),
-  file.path(result_dir, "final_model_coefficients.csv"),
-  row.names = FALSE
-)
-write.csv(
-  tidy_coefficients(competing_fit, "SARIMA(2,0,1)x(0,1,1)[12]"),
-  file.path(result_dir, "competing_model_coefficients.csv"),
-  row.names = FALSE
-)
-write.csv(
-  tidy_coefficients(simpler_fit, "SARIMA(2,0,0)x(0,1,1)[12]"),
-  file.path(result_dir, "simpler_model_coefficients.csv"),
-  row.names = FALSE
-)
-
-estimate_se <- function(fit, parameter) {
-  if (!parameter %in% rownames(fit$t.table)) {
-    return("--")
-  }
-  sprintf(
-    "%.4f (%.4f)",
-    fit$t.table[parameter, 1],
-    fit$t.table[parameter, 2]
-  )
-}
-
-formatted_p <- function(fit, parameter) {
-  if (!parameter %in% rownames(fit$t.table)) {
-    return("--")
-  }
-  value <- fit$t.table[parameter, 4]
-  if (value < 0.001) {
-    "< .001"
+forecast_candidate <- function(fit, spec, observed_length, horizon) {
+  if (isTRUE(spec$Trend)) {
+    forecast::forecast(
+      fit,
+      h = horizon,
+      xreg = (observed_length + 1):(observed_length + horizon),
+      level = c(80, 95)
+    )
   } else {
-    sub("^0", "", sprintf("%.3f", value))
+    forecast::forecast(fit, h = horizon, level = c(80, 95))
   }
 }
 
-parameters <- c("ar1", "ar2", "ar3", "ma1", "sma1", "constant")
-parameter_labels <- c(
-  "AR(1)", "AR(2)", "AR(3)", "MA(1)", "Seasonal MA(1)", "Drift"
-)
+coefficient_table <- function(fit, model_id, model_label) {
+  estimates <- stats::coef(fit)
+  standard_errors <- sqrt(diag(fit$var.coef))
+  z_values <- estimates / standard_errors
+  p_values <- 2 * stats::pnorm(-abs(z_values))
 
-coefficient_comparison <- data.frame(
-  Parameter = parameter_labels,
-  `Leading Estimate (SE)` = vapply(
-    parameters, function(parameter) estimate_se(final_fit, parameter), character(1)
-  ),
-  `Leading p` = vapply(
-    parameters, function(parameter) formatted_p(final_fit, parameter), character(1)
-  ),
-  `Competing Estimate (SE)` = vapply(
-    parameters,
-    function(parameter) estimate_se(competing_fit, parameter),
-    character(1)
-  ),
-  `Competing p` = vapply(
-    parameters,
-    function(parameter) formatted_p(competing_fit, parameter),
-    character(1)
-  ),
-  check.names = FALSE,
-  row.names = NULL
-)
-write.csv(
-  coefficient_comparison,
-  file.path(result_dir, "model_coefficients_table.csv"),
-  row.names = FALSE
-)
-
-model_row <- function(fit, model_name) {
   data.frame(
-    Model = model_name,
-    Parameters = length(fit$fit$coef),
-    Sigma.squared = fit$fit$sigma2,
-    Log.Likelihood = fit$fit$loglik,
-    AIC = unname(fit$ICs["AIC"]),
-    AICc = unname(fit$ICs["AICc"]),
-    BIC = unname(fit$ICs["BIC"])
+    Model.ID = model_id,
+    Model = model_label,
+    Parameter = names(estimates),
+    Estimate = as.numeric(estimates),
+    Standard.Error = as.numeric(standard_errors),
+    z.value = as.numeric(z_values),
+    P.value = as.numeric(p_values),
+    stringsAsFactors = FALSE,
+    row.names = NULL
   )
 }
 
-model_comparison <- rbind(
-  model_row(final_fit, "SARIMA(3,0,0)x(0,1,1)[12]"),
-  model_row(competing_fit, "SARIMA(2,0,1)x(0,1,1)[12]"),
-  model_row(simpler_fit, "SARIMA(2,0,0)x(0,1,1)[12]")
+root_diagnostics <- function(fit, spec) {
+  estimates <- stats::coef(fit)
+
+  ar_values <- estimates[paste0("ar", seq_len(spec$p))]
+  ar_values <- ar_values[!is.na(ar_values)]
+  seasonal_ar_values <- estimates[paste0("sar", seq_len(spec$P))]
+  seasonal_ar_values <- seasonal_ar_values[!is.na(seasonal_ar_values)]
+
+  ma_values <- estimates[paste0("ma", seq_len(spec$q))]
+  ma_values <- ma_values[!is.na(ma_values)]
+  seasonal_ma_values <- estimates[paste0("sma", seq_len(spec$Q))]
+  seasonal_ma_values <- seasonal_ma_values[!is.na(seasonal_ma_values)]
+
+  ar_polynomial <- if (length(ar_values) > 0) c(1, -ar_values) else 1
+  seasonal_ar_polynomial <- numeric(12 * length(seasonal_ar_values) + 1)
+  seasonal_ar_polynomial[1] <- 1
+  if (length(seasonal_ar_values) > 0) {
+    seasonal_ar_polynomial[12 * seq_along(seasonal_ar_values) + 1] <-
+      -seasonal_ar_values
+  }
+
+  ma_polynomial <- if (length(ma_values) > 0) c(1, ma_values) else 1
+  seasonal_ma_polynomial <- numeric(12 * length(seasonal_ma_values) + 1)
+  seasonal_ma_polynomial[1] <- 1
+  if (length(seasonal_ma_values) > 0) {
+    seasonal_ma_polynomial[12 * seq_along(seasonal_ma_values) + 1] <-
+      seasonal_ma_values
+  }
+
+  full_ar <- multiply_polynomials(ar_polynomial, seasonal_ar_polynomial)
+  full_ma <- multiply_polynomials(ma_polynomial, seasonal_ma_polynomial)
+
+  min_ar_root <- if (length(full_ar) > 1) {
+    min(Mod(polyroot(full_ar)))
+  } else {
+    Inf
+  }
+  min_ma_root <- if (length(full_ma) > 1) {
+    min(Mod(polyroot(full_ma)))
+  } else {
+    Inf
+  }
+
+  data.frame(
+    Minimum.AR.Root = min_ar_root,
+    Minimum.MA.Root = min_ma_root,
+    Valid.Roots = min_ar_root > 1 + 1e-6 && min_ma_root > 1 + 1e-6,
+    Near.Boundary = min(c(min_ar_root, min_ma_root)) < 1.01,
+    stringsAsFactors = FALSE
+  )
+}
+
+ljung_box_p <- function(fit, spec, lag) {
+  residual_values <- as.numeric(stats::residuals(fit))
+  residual_values <- residual_values[is.finite(residual_values)]
+  fit_df <- spec$p + spec$q + spec$P + spec$Q
+  stats::Box.test(
+    residual_values,
+    lag = lag,
+    type = "Ljung-Box",
+    fitdf = fit_df
+  )$p.value
+}
+
+full_fits <- vector("list", nrow(candidate_specs))
+names(full_fits) <- candidate_specs$Model.ID
+all_coefficients <- vector("list", nrow(candidate_specs))
+screening_rows <- vector("list", nrow(candidate_specs))
+
+for (i in seq_len(nrow(candidate_specs))) {
+  spec <- candidate_specs[i, ]
+  message("Fitting full-series candidate: ", spec$Model)
+  fit <- fit_candidate(X, spec)
+  full_fits[[spec$Model.ID]] <- fit
+
+  coefficients <- coefficient_table(fit, spec$Model.ID, spec$Model)
+  all_coefficients[[i]] <- coefficients
+  roots <- root_diagnostics(fit, spec)
+  p_values <- coefficients$P.value
+  lb_values <- vapply(
+    c(12, 24, 36),
+    function(lag) ljung_box_p(fit, spec, lag),
+    numeric(1)
+  )
+
+  coefficients_significant <- all(p_values < 0.05)
+  residuals_adequate <- all(lb_values > 0.05)
+  eligible <- coefficients_significant && residuals_adequate && roots$Valid.Roots
+
+  decision <- if (!roots$Valid.Roots) {
+    "Excluded: nonstationary or noninvertible fitted roots"
+  } else if (!coefficients_significant) {
+    "Excluded: one or more structural coefficients are not significant"
+  } else if (!residuals_adequate) {
+    "Excluded: residual dependence remains in Ljung-Box checks"
+  } else {
+    "Eligible finalist"
+  }
+
+  screening_rows[[i]] <- data.frame(
+    Model.ID = spec$Model.ID,
+    Model = spec$Model,
+    Family = spec$Family,
+    Identification.Basis = spec$Identification.Basis,
+    Parameters = length(stats::coef(fit)),
+    Fit.Method = attr(fit, "fit_method"),
+    Sigma.squared = fit$sigma2,
+    Log.Likelihood = as.numeric(stats::logLik(fit)),
+    AIC = stats::AIC(fit),
+    AICc = fit$aicc,
+    BIC = stats::BIC(fit),
+    Minimum.AR.Root = roots$Minimum.AR.Root,
+    Minimum.MA.Root = roots$Minimum.MA.Root,
+    Near.Boundary = roots$Near.Boundary,
+    Maximum.Coefficient.P = max(p_values),
+    Ljung.Box.12.P = lb_values[1],
+    Ljung.Box.24.P = lb_values[2],
+    Ljung.Box.36.P = lb_values[3],
+    Coefficients.Significant = coefficients_significant,
+    Residuals.Adequate = residuals_adequate,
+    Valid.Roots = roots$Valid.Roots,
+    Eligible = eligible,
+    Decision = decision,
+    stringsAsFactors = FALSE
+  )
+}
+
+all_coefficients <- do.call(rbind, all_coefficients)
+candidate_screening <- do.call(rbind, screening_rows)
+
+candidate_screening$Delta.AICc.Within.Family <- ave(
+  candidate_screening$AICc,
+  candidate_screening$Family,
+  FUN = function(value) value - min(value, na.rm = TRUE)
 )
-model_comparison$Delta.AICc <-
-  model_comparison$AICc - min(model_comparison$AICc)
+
 write.csv(
-  model_comparison,
-  file.path(result_dir, "model_comparison.csv"),
+  candidate_screening,
+  file.path(result_dir, "candidate_screening.csv"),
+  row.names = FALSE
+)
+write.csv(
+  all_coefficients,
+  file.path(result_dir, "candidate_coefficients.csv"),
   row.names = FALSE
 )
 
 ############################################################
-# 6. MODEL DIAGNOSTICS
+# 5. DRIFT SIGNIFICANCE CHECKS
 ############################################################
 
-open_png("Figure_05_Final_Model_Diagnostics.png", 8, 8)
-par(family = report_font)
-invisible(capture.output(
-  astsa::sarima(X, 3, 0, 0, 0, 1, 1, 12, no.constant = FALSE)
-))
+fit_with_drift <- function(series, spec) {
+  methods <- c("ML", "CSS-ML", "CSS")
+  for (fit_method in methods) {
+    fit <- try(
+      suppressWarnings(
+        forecast::Arima(
+          series,
+          order = c(spec$p, spec$d, spec$q),
+          seasonal = list(
+            order = c(spec$P, spec$D, spec$Q),
+            period = 12
+          ),
+          include.mean = FALSE,
+          include.drift = TRUE,
+          method = fit_method
+        )
+      ),
+      silent = TRUE
+    )
+    if (!inherits(fit, "try-error")) {
+      return(fit)
+    }
+  }
+  stop("Drift check failed for ", spec$Model, call. = FALSE)
+}
+
+drift_model_ids <- c("od_ar2", "od_ar2_sarma11")
+drift_checks <- lapply(drift_model_ids, function(model_id) {
+  spec <- candidate_specs[candidate_specs$Model.ID == model_id, ]
+  fit <- fit_with_drift(X, spec)
+  estimates <- stats::coef(fit)
+  standard_errors <- sqrt(diag(fit$var.coef))
+  drift_index <- which(names(estimates) == "drift")
+  drift_p <- 2 * stats::pnorm(
+    -abs(estimates[drift_index] / standard_errors[drift_index])
+  )
+
+  data.frame(
+    Model.ID = model_id,
+    Model = spec$Model,
+    Drift.Estimate = estimates[drift_index],
+    Drift.Standard.Error = standard_errors[drift_index],
+    Drift.P.value = drift_p,
+    Decision = if (drift_p < 0.05) "Retain drift" else "Omit drift",
+    stringsAsFactors = FALSE,
+    row.names = NULL
+  )
+})
+drift_checks <- do.call(rbind, drift_checks)
+write.csv(drift_checks, file.path(result_dir, "drift_checks.csv"), row.names = FALSE)
+
+if (any(drift_checks$Drift.P.value < 0.05)) {
+  stop("A retained ordinary-difference model requires drift; review the specification.")
+}
+
+############################################################
+# 6. EXPANDING-WINDOW FORECAST VALIDATION
+############################################################
+
+validation_initial <- 120
+validation_horizon <- 24
+validation_origins <- validation_initial:(length(X) - validation_horizon)
+
+error_metrics <- function(errors) {
+  data.frame(
+    RMSE.1 = sqrt(mean(errors[, 1]^2)),
+    MAE.1 = mean(abs(errors[, 1])),
+    RMSE.12 = sqrt(mean(errors[, 12]^2)),
+    MAE.12 = mean(abs(errors[, 12])),
+    RMSE.24 = sqrt(mean(errors[, 24]^2)),
+    MAE.24 = mean(abs(errors[, 24])),
+    RMSE.All = sqrt(mean(errors^2)),
+    MAE.All = mean(abs(errors)),
+    stringsAsFactors = FALSE
+  )
+}
+
+validation_rows <- vector("list", nrow(candidate_specs))
+
+for (i in seq_len(nrow(candidate_specs))) {
+  spec <- candidate_specs[i, ]
+  message("Rolling validation: ", spec$Model)
+  errors <- matrix(
+    NA_real_,
+    nrow = length(validation_origins),
+    ncol = validation_horizon
+  )
+
+  for (j in seq_along(validation_origins)) {
+    origin <- validation_origins[j]
+    training_series <- ts(
+      as.numeric(X)[seq_len(origin)],
+      start = start(X),
+      frequency = frequency(X)
+    )
+    fit <- fit_candidate(training_series, spec)
+    predicted <- forecast_candidate(
+      fit,
+      spec,
+      origin,
+      validation_horizon
+    )
+    actual <- as.numeric(X[(origin + 1):(origin + validation_horizon)])
+    errors[j, ] <- as.numeric(predicted$mean) - actual
+  }
+
+  validation_rows[[i]] <- cbind(
+    data.frame(
+      Type = "SARIMA candidate",
+      Model.ID = spec$Model.ID,
+      Model = spec$Model,
+      Origins = length(validation_origins),
+      stringsAsFactors = FALSE
+    ),
+    error_metrics(errors)
+  )
+}
+
+benchmark_errors <- function(method) {
+  errors <- matrix(
+    NA_real_,
+    nrow = length(validation_origins),
+    ncol = validation_horizon
+  )
+
+  for (j in seq_along(validation_origins)) {
+    origin <- validation_origins[j]
+    training_values <- as.numeric(X)[seq_len(origin)]
+    actual <- as.numeric(X[(origin + 1):(origin + validation_horizon)])
+
+    predicted <- if (method == "seasonal_naive") {
+      rep(tail(training_values, 12), length.out = validation_horizon)
+    } else {
+      slope <- (tail(training_values, 1) - training_values[1]) /
+        (length(training_values) - 1)
+      tail(training_values, 1) + seq_len(validation_horizon) * slope
+    }
+    errors[j, ] <- predicted - actual
+  }
+  error_metrics(errors)
+}
+
+seasonal_naive_metrics <- benchmark_errors("seasonal_naive")
+drift_benchmark_metrics <- benchmark_errors("random_walk_drift")
+
+benchmark_rows <- rbind(
+  cbind(
+    data.frame(
+      Type = "Benchmark",
+      Model.ID = "seasonal_naive",
+      Model = "Seasonal naive",
+      Origins = length(validation_origins),
+      stringsAsFactors = FALSE
+    ),
+    seasonal_naive_metrics
+  ),
+  cbind(
+    data.frame(
+      Type = "Benchmark",
+      Model.ID = "random_walk_drift",
+      Model = "Random walk with drift",
+      Origins = length(validation_origins),
+      stringsAsFactors = FALSE
+    ),
+    drift_benchmark_metrics
+  )
+)
+
+rolling_validation <- rbind(do.call(rbind, validation_rows), benchmark_rows)
+write.csv(
+  rolling_validation,
+  file.path(result_dir, "rolling_validation.csv"),
+  row.names = FALSE
+)
+
+############################################################
+# 7. FINALIST COMPARISON AND DETERMINISTIC SELECTION
+############################################################
+
+eligible_screening <- candidate_screening[candidate_screening$Eligible, ]
+if (nrow(eligible_screening) < 2) {
+  stop("Fewer than two diagnostically adequate SARIMA finalists remain.")
+}
+
+finalist_validation <- rolling_validation[
+  rolling_validation$Model.ID %in% eligible_screening$Model.ID,
+]
+finalist_comparison <- merge(
+  eligible_screening,
+  finalist_validation,
+  by = c("Model.ID", "Model"),
+  sort = FALSE
+)
+finalist_comparison <- finalist_comparison[
+  match(eligible_screening$Model.ID, finalist_comparison$Model.ID),
+]
+
+best_rmse <- min(finalist_comparison$RMSE.All)
+near_best <- finalist_comparison[
+  finalist_comparison$RMSE.All <= best_rmse * 1.02,
+]
+near_best <- near_best[
+  order(
+    near_best$MAE.All,
+    near_best$Parameters,
+    near_best$Delta.AICc.Within.Family
+  ),
+]
+selected_id <- near_best$Model.ID[1]
+
+ranked_finalists <- finalist_comparison[
+  order(finalist_comparison$RMSE.All, finalist_comparison$MAE.All),
+]
+runner_up_id <- ranked_finalists$Model.ID[
+  ranked_finalists$Model.ID != selected_id
+][1]
+
+finalist_comparison$Selection <- ifelse(
+  finalist_comparison$Model.ID == selected_id,
+  "Selected",
+  ifelse(finalist_comparison$Model.ID == runner_up_id, "Runner-up", "Finalist")
+)
+write.csv(
+  finalist_comparison,
+  file.path(result_dir, "finalist_comparison.csv"),
+  row.names = FALSE
+)
+
+expected_selected_id <- "od_ar2_sarma11"
+if (!identical(selected_id, expected_selected_id)) {
+  stop(
+    "The reproducible selection did not confirm the expected final model. ",
+    "Selected: ", selected_id,
+    call. = FALSE
+  )
+}
+
+selected_spec <- candidate_specs[candidate_specs$Model.ID == selected_id, ]
+runner_up_spec <- candidate_specs[candidate_specs$Model.ID == runner_up_id, ]
+selected_fit <- full_fits[[selected_id]]
+runner_up_fit <- full_fits[[runner_up_id]]
+
+selected_validation <- rolling_validation[
+  rolling_validation$Model.ID == selected_id,
+]
+runner_up_validation <- rolling_validation[
+  rolling_validation$Model.ID == runner_up_id,
+]
+benchmark_validation <- rolling_validation[
+  rolling_validation$Type == "Benchmark",
+]
+
+if (
+  selected_validation$RMSE.All >= runner_up_validation$RMSE.All ||
+  any(selected_validation$RMSE.All >= benchmark_validation$RMSE.All)
+) {
+  stop("The selected model did not outperform the runner-up and both benchmarks.")
+}
+
+selected_coefficients <- coefficient_table(
+  selected_fit,
+  selected_id,
+  selected_spec$Model
+)
+runner_up_coefficients <- coefficient_table(
+  runner_up_fit,
+  runner_up_id,
+  runner_up_spec$Model
+)
+write.csv(
+  selected_coefficients,
+  file.path(result_dir, "selected_model_coefficients.csv"),
+  row.names = FALSE
+)
+write.csv(
+  runner_up_coefficients,
+  file.path(result_dir, "runner_up_model_coefficients.csv"),
+  row.names = FALSE
+)
+
+model_summary_text <- function(spec, fit, validation, role) {
+  screening <- candidate_screening[
+    candidate_screening$Model.ID == spec$Model.ID,
+  ]
+  coefficients <- coefficient_table(fit, spec$Model.ID, spec$Model)
+  c(
+    paste(role, ": ", spec$Model, sep = ""),
+    paste("Differencing family:", spec$Family),
+    paste("Fit method:", attr(fit, "fit_method")),
+    paste("Residual variance:", sprintf("%.6f", fit$sigma2)),
+    paste("AICc (within-family use only):", sprintf("%.4f", fit$aicc)),
+    paste("BIC (within-family use only):", sprintf("%.4f", stats::BIC(fit))),
+    paste(
+      "Ljung-Box p-values at lags 12, 24, and 36:",
+      paste(
+        sprintf(
+          "%.4f",
+          c(
+            screening$Ljung.Box.12.P,
+            screening$Ljung.Box.24.P,
+            screening$Ljung.Box.36.P
+          )
+        ),
+        collapse = ", "
+      )
+    ),
+    paste("Aggregate validation RMSE:", sprintf("%.4f", validation$RMSE.All)),
+    paste("Aggregate validation MAE:", sprintf("%.4f", validation$MAE.All)),
+    "",
+    "Coefficients:",
+    paste(
+      sprintf(
+        "%s = %.6f (SE = %.6f, p = %.6g)",
+        coefficients$Parameter,
+        coefficients$Estimate,
+        coefficients$Standard.Error,
+        coefficients$P.value
+      ),
+      collapse = "\n"
+    )
+  )
+}
+
+writeLines(
+  model_summary_text(
+    selected_spec,
+    selected_fit,
+    selected_validation,
+    "Selected model"
+  ),
+  file.path(result_dir, "selected_model_summary.txt")
+)
+writeLines(
+  model_summary_text(
+    runner_up_spec,
+    runner_up_fit,
+    runner_up_validation,
+    "Runner-up model"
+  ),
+  file.path(result_dir, "runner_up_model_summary.txt")
+)
+
+############################################################
+# 8. DIAGNOSTIC FIGURES
+############################################################
+
+diagnostic_plot <- function(fit, spec, title) {
+  residual_values <- as.numeric(stats::residuals(fit))
+  residual_values <- residual_values[is.finite(residual_values)]
+  standardized_residuals <- residual_values / stats::sd(residual_values)
+  fit_df <- spec$p + spec$q + spec$P + spec$Q
+  diagnostic_lags <- seq(max(5, fit_df + 1), 36)
+  lb_p_values <- vapply(
+    diagnostic_lags,
+    function(lag) {
+      stats::Box.test(
+        residual_values,
+        lag = lag,
+        type = "Ljung-Box",
+        fitdf = fit_df
+      )$p.value
+    },
+    numeric(1)
+  )
+
+  report_style(c(4.2, 4.3, 3, 1))
+  par(mfrow = c(2, 2))
+  plot(
+    standardized_residuals,
+    type = "l",
+    col = report_teal,
+    lwd = 1.2,
+    main = "Standardized Residuals",
+    xlab = "Observation",
+    ylab = "Residual"
+  )
+  abline(h = 0, col = "gray50", lty = 2)
+  acf(
+    residual_values,
+    lag.max = 36,
+    main = "Residual ACF",
+    xlab = "Lag",
+    ylab = "ACF",
+    col = report_teal,
+    ci.col = accent_orange
+  )
+  stats::qqnorm(
+    standardized_residuals,
+    main = "Normal Q-Q Plot",
+    xlab = "Theoretical Quantiles",
+    ylab = "Sample Quantiles",
+    col = report_teal,
+    pch = 1
+  )
+  stats::qqline(standardized_residuals, col = accent_orange, lwd = 1.5)
+  plot(
+    diagnostic_lags,
+    lb_p_values,
+    type = "o",
+    pch = 1,
+    col = report_teal,
+    ylim = c(0, 1),
+    main = "Ljung-Box p-values",
+    xlab = "Lag",
+    ylab = "p-value"
+  )
+  abline(h = 0.05, col = accent_orange, lty = 2, lwd = 1.5)
+  mtext(title, outer = TRUE, side = 3, line = -1.2, font = 2, col = report_teal)
+  par(mfrow = c(1, 1))
+}
+
+open_png("Figure_05_Selected_Model_Diagnostics.png", 8, 8)
+par(oma = c(0, 0, 2, 0))
+diagnostic_plot(selected_fit, selected_spec, selected_spec$Model)
 dev.off()
 
-open_png("Figure_06_Competing_Model_Diagnostics.png", 8, 8)
-par(family = report_font)
-invisible(capture.output(
-  astsa::sarima(X, 2, 0, 1, 0, 1, 1, 12, no.constant = FALSE)
-))
+open_png("Figure_06_Runner_Up_Model_Diagnostics.png", 8, 8)
+par(oma = c(0, 0, 2, 0))
+diagnostic_plot(runner_up_fit, runner_up_spec, runner_up_spec$Model)
 dev.off()
 
 ############################################################
-# 7. FINAL MODEL AND 24-MONTH FORECAST
+# 9. FINAL 24-MONTH FORECAST
 ############################################################
 
 forecast_horizon <- 24
-trend <- seq_along(X)
-
-forecast_fit <- forecast::Arima(
-  X,
-  order = c(3, 0, 0),
-  seasonal = list(order = c(0, 1, 1), period = 12),
-  xreg = trend,
-  include.mean = FALSE
+final_forecast <- forecast_candidate(
+  selected_fit,
+  selected_spec,
+  length(X),
+  forecast_horizon
 )
 
-future_trend <- (length(X) + 1):(length(X) + forecast_horizon)
-final_forecast <- forecast::forecast(
-  forecast_fit,
-  h = forecast_horizon,
-  xreg = future_trend,
-  level = c(80, 95)
-)
-
-forecast_mean <- final_forecast$mean
-lower_80 <- final_forecast$lower[, "80%"]
-upper_80 <- final_forecast$upper[, "80%"]
-lower_95 <- final_forecast$lower[, "95%"]
-upper_95 <- final_forecast$upper[, "95%"]
+forecast_dates <- seq(
+  from = max(chicken_data$date),
+  by = "month",
+  length.out = forecast_horizon + 1
+)[-1]
 
 forecast_results <- data.frame(
-  Time = round(as.numeric(time(forecast_mean)), 6),
-  Point.Forecast = round(as.numeric(forecast_mean), 3),
-  Lower.80 = round(as.numeric(lower_80), 3),
-  Upper.80 = round(as.numeric(upper_80), 3),
-  Lower.95 = round(as.numeric(lower_95), 3),
-  Upper.95 = round(as.numeric(upper_95), 3)
+  Date = forecast_dates,
+  Point.Forecast = round(as.numeric(final_forecast$mean), 3),
+  Lower.80 = round(as.numeric(final_forecast$lower[, "80%"]), 3),
+  Upper.80 = round(as.numeric(final_forecast$upper[, "80%"]), 3),
+  Lower.95 = round(as.numeric(final_forecast$lower[, "95%"]), 3),
+  Upper.95 = round(as.numeric(final_forecast$upper[, "95%"]), 3),
+  stringsAsFactors = FALSE
 )
-forecast_output <- data.frame(
-  Time = sub("\\.?0+$", "", sprintf("%.6f", forecast_results$Time)),
-  Point.Forecast = sprintf("%.3f", forecast_results$Point.Forecast),
-  Lower.80 = sprintf("%.3f", forecast_results$Lower.80),
-  Upper.80 = sprintf("%.3f", forecast_results$Upper.80),
-  Lower.95 = sprintf("%.3f", forecast_results$Lower.95),
-  Upper.95 = sprintf("%.3f", forecast_results$Upper.95),
-  check.names = FALSE
-)
-write.table(
-  forecast_output,
+write.csv(
+  forecast_results,
   file.path(result_dir, "forecast_24_months.csv"),
-  row.names = FALSE,
-  col.names = TRUE,
-  quote = FALSE,
-  sep = ","
+  row.names = FALSE
 )
 
-forecast_time <- as.numeric(time(forecast_mean))
+forecast_time <- as.numeric(time(final_forecast$mean))
 observed_time <- as.numeric(time(X))
+lower_80 <- as.numeric(final_forecast$lower[, "80%"])
+upper_80 <- as.numeric(final_forecast$upper[, "80%"])
+lower_95 <- as.numeric(final_forecast$lower[, "95%"])
+upper_95 <- as.numeric(final_forecast$upper[, "95%"])
 
 open_png("Figure_07_Twenty_Four_Month_Forecast.png", 7.5, 5.5)
 report_style()
@@ -492,7 +1016,7 @@ plot(
   xlim = range(c(observed_time, forecast_time)),
   ylim = range(c(as.numeric(X), lower_95, upper_95), na.rm = TRUE),
   xlab = "Year",
-  ylab = "Chicken price",
+  ylab = "Chicken price (cents per pound)",
   main = "Twenty-Four-Month Forecast of Chicken Prices",
   col = report_teal,
   lwd = 1.5,
@@ -500,28 +1024,64 @@ plot(
 )
 polygon(
   c(forecast_time, rev(forecast_time)),
-  c(as.numeric(lower_95), rev(as.numeric(upper_95))),
+  c(lower_95, rev(upper_95)),
   border = NA,
   col = grDevices::adjustcolor(report_teal, alpha.f = 0.15)
 )
 polygon(
   c(forecast_time, rev(forecast_time)),
-  c(as.numeric(lower_80), rev(as.numeric(upper_80))),
+  c(lower_80, rev(upper_80)),
   border = NA,
   col = grDevices::adjustcolor(report_teal, alpha.f = 0.30)
 )
 lines(observed_time, as.numeric(X), col = report_teal, lwd = 1.5)
 lines(
   forecast_time,
-  as.numeric(forecast_mean),
-  col = report_teal,
+  as.numeric(final_forecast$mean),
+  col = accent_orange,
   lwd = 2
+)
+legend(
+  "topleft",
+  legend = c("Observed", "Forecast", "80% interval", "95% interval"),
+  col = c(report_teal, accent_orange, soft_teal, soft_teal),
+  lty = c(1, 1, NA, NA),
+  lwd = c(1.5, 2, NA, NA),
+  pch = c(NA, NA, 15, 15),
+  pt.cex = c(NA, NA, 2, 2),
+  bty = "n",
+  cex = 0.8
 )
 dev.off()
 
-writeLines(
-  capture.output(sessionInfo()),
-  file.path(result_dir, "session_info.txt")
-)
+############################################################
+# 10. FINAL ASSERTIONS AND SESSION INFORMATION
+############################################################
 
-message("Analysis complete. Figures and results were written to the repository.")
+if (
+  nrow(forecast_results) != 24 ||
+  forecast_results$Date[1] != as.Date("2016-08-01") ||
+  tail(forecast_results$Date, 1) != as.Date("2018-07-01")
+) {
+  stop("The final forecast dates are not August 2016 through July 2018.")
+}
+
+if (
+  any(selected_coefficients$P.value >= 0.05) ||
+  any(
+    candidate_screening[
+      candidate_screening$Model.ID == selected_id,
+      c("Ljung.Box.12.P", "Ljung.Box.24.P", "Ljung.Box.36.P")
+    ] <= 0.05
+  )
+) {
+  stop("The selected model failed the final coefficient or residual checks.")
+}
+
+session_lines <- sub("[[:space:]]+$", "", capture.output(sessionInfo()))
+writeLines(session_lines, file.path(result_dir, "session_info.txt"))
+
+message("Analysis complete.")
+message("Selected model: ", selected_spec$Model)
+message("Runner-up model: ", runner_up_spec$Model)
+message("Figures and consolidated results were written to the repository.")
