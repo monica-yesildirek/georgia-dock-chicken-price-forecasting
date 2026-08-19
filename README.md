@@ -21,10 +21,10 @@ An end-to-end analysis of monthly U.S. chicken prices, from differencing and mod
 - Chicken prices increased from approximately 66 cents per pound in 2001 to more than 110 cents per pound in 2016 while retaining relatively stable variance. The original scale was therefore retained.
 - The original-series ACF decayed slowly, and its augmented Dickey-Fuller test did not reject a unit root (`p = .885`). Both an ordinary difference and a lag-12 difference were evaluated rather than treating either differencing order as predetermined.
 - Eight theory-driven SARIMA candidates were screened. The ordinary-difference SARIMA(2,1,0) x (1,0,1)[12] and SARIMA(2,1,0) x (1,0,0)[12] models were the only candidates with significant coefficients, valid roots, and Ljung-Box p-values above .05 at lags 12, 24, and 36.
-- The selected SARIMA(2,1,0) x (1,0,1)[12] model reduced aggregate rolling-origin RMSE to `5.604`, compared with `6.576` for the runner-up and `5.898` for a random walk with drift. Its aggregate MAE was `4.528`.
+- The SARIMA(2,1,0) x (1,0,1)[12] model provided the best validated forecast performance among the eligible candidates, reducing aggregate rolling-origin RMSE to `5.604`, compared with `6.576` for the runner-up and `5.898` for a random walk with drift. Its aggregate MAE was `4.528`.
 - The final point forecast begins at 110.8 cents per pound in August 2016, reaches a short-term low of 108.9 cents in December 2016, and rises to 114.9 cents by July 2018. The final 95% prediction interval is 97.7-132.0 cents per pound.
 
-The selected model contains strong seasonal persistence: its seasonal AR estimate is 0.979 and its minimum AR root is 1.002. The fitted roots remain valid, and the model produced the strongest out-of-sample results, but the near-boundary behavior contributes to widening long-horizon prediction intervals. Forecasts should therefore be interpreted as planning ranges based on historical price behavior rather than predictions of future market shocks.
+The selected model has a seasonal AR estimate of 0.979 and a minimum AR root of 1.002. Although the fitted root remains outside the unit circle, its proximity to the boundary makes the seasonal behavior highly persistent and somewhat sensitive to small changes in the data or model specification. This sensitivity, together with the widening long-horizon prediction intervals, means that the forecasts should be interpreted as planning ranges based on historical price behavior rather than predictions of future market shocks.
 
 ## Modeling approach
 
