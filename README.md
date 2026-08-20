@@ -1,72 +1,78 @@
 # Georgia Dock Chicken Price Forecasting
 
-An end-to-end time-series analysis of monthly whole-bird spot prices at Georgia docks, from data discovery and model identification through rolling-origin validation and a 24-month forecast.
+A repeatable R forecasting workflow that turns 15 years of monthly Georgia dock chicken prices into a two-year planning baseline with clear risk ranges.
 
 ![Twenty-four-month forecast of Georgia dock chicken prices](figures/Figure_07_Twenty_Four_Month_Forecast.png)
 
 ## Business Problem and Objectives
 
-A procurement or financial-planning stakeholder needs a defensible estimate of future chicken prices to support budgeting, purchasing, and risk planning. The decision is not limited to identifying a single expected price; it also requires an estimate of the uncertainty surrounding that price over a two-year planning horizon.
+Wholesale chicken prices affect purchasing budgets, product costs, and margin expectations. Procurement and financial-planning teams need a shared view of where prices may move and how much uncertainty to include in their plans. Relying on the latest price or a simple annual average would not account for the trend and recurring patterns in the market.
 
-| Item | Project definition |
+| Business requirement | Project response |
 | --- | --- |
-| Stakeholder | Procurement and financial-planning teams exposed to changes in wholesale chicken prices |
-| Business question | How can historical Georgia dock chicken prices support two-year budgeting and procurement planning? |
-| Decision | Establish a baseline price outlook and planning range for August 2016 through July 2018 |
-| Problem | Model the trend and recurring dependence in a monthly price series without overstating forecast certainty |
-| Constraints | A univariate series of 180 historical observations, no external predictors, and increasing uncertainty across a 24-month horizon |
-| Success criteria | Select a diagnostically adequate model through out-of-sample validation, outperform relevant benchmarks, quantify forecast uncertainty, and make the analysis reproducible in R |
+| Primary users | Procurement and financial-planning teams with exposure to wholesale chicken prices |
+| Decision | Set a baseline price outlook and planning range for August 2016 through July 2018 |
+| Business problem | Estimate the likely price path without creating false confidence around a volatile market outcome |
+| Constraints | 180 monthly observations, no external cost or supply indicators, and greater uncertainty farther into the forecast |
+| Success criteria | Beat practical forecast benchmarks, pass model risk checks, quantify uncertainty, and provide a repeatable workflow |
+
+The project objectives were to:
+
+- establish a credible 24-month baseline for budgeting and procurement discussions;
+- show a range of possible prices, not just a single point estimate;
+- test the selected approach against simpler forecasting methods; and
+- create an R workflow that can be rerun when new data become available.
 
 ## Data and Discovery
 
-The analysis uses the `chicken` dataset distributed with the `astsa` R package. The repository contains a clean extract in [`data/chicken_prices.csv`](data/chicken_prices.csv).
+The analysis uses the `chicken` dataset distributed with the `astsa` R package. A clean, project-ready extract is stored in [`data/chicken_prices.csv`](data/chicken_prices.csv).
 
 | Data characteristic | Detail |
 | --- | --- |
 | Measure | Monthly whole-bird spot price at Georgia docks |
 | Period | August 2001-July 2016 |
-| Observations | 180 consecutive months |
+| Volume | 180 consecutive monthly observations |
 | Unit | U.S. cents per pound |
-| Quality checks | Expected schema, no missing values, correct observation count, and consecutive monthly dates |
+| Quality controls | Required fields, no missing values, correct record count, and consecutive monthly dates |
 
-Exploratory analysis produced four findings relevant to the modeling strategy:
+Discovery work identified several signals that matter for planning:
 
-- Prices increased from approximately 66 cents per pound in 2001 to more than 110 cents per pound in 2016 while retaining relatively stable variance. The original scale was therefore retained.
-- The original-series ACF decayed slowly, and the augmented Dickey-Fuller test did not reject a unit root (`p = .885`).
-- Both the ordinary difference and the lag-12 difference rejected the unit-root null at the reported lower bound of `.01`. Neither differencing path was treated as predetermined.
-- The ordinary-difference ACF/PACF suggested a short nonseasonal autoregressive structure with recurring annual dependence, while the seasonal-difference path supported a separate family of plausible candidates.
+- Prices increased from approximately 66 cents per pound in 2001 to more than 110 cents per pound in 2016. A long-range plan therefore needed to account for an upward price level rather than assume a flat historical average.
+- Price variability remained relatively stable as the level increased, so the forecast could remain in the original cents-per-pound scale used by the business.
+- The series showed strong persistence and recurring annual dependence. A forecast based only on the latest observation would miss important information in the historical pattern.
+- Both ordinary month-to-month change and year-over-year change were credible ways to stabilize the series. Both were carried into model testing so the final choice would be based on performance rather than an early assumption.
 
-The analysis assumes that the historical dependence in the series remains informative across the forecast horizon. It does not assume that the model can anticipate structural breaks, supply disruptions, policy changes, or other external shocks that are absent from the data.
+The dataset contains price history only. It does not include feed costs, supply levels, weather, energy prices, policy changes, or market disruptions. Forecasts are therefore treated as planning ranges based on historical behavior, not as predictions of unexpected market events.
 
 ## Solution Design
 
-The solution uses a theory-driven SARIMA screening process followed by expanding-window validation. This design separates model identification from model selection and prevents a favorable in-sample statistic from determining the forecast model on its own.
+The solution is a lightweight forecasting pipeline that compares credible model choices, removes unstable or unnecessarily complex options, and selects the strongest remaining candidate through out-of-sample testing.
 
-1. Inspect the original series for trend, seasonality, outliers, and changing variance.
-2. Compare ordinary and lag-12 seasonal differences using time plots, ACF/PACF behavior, and augmented Dickey-Fuller tests.
-3. Screen eight ACF/PACF-justified SARIMA specifications across the `d=1, D=0` and `d=0, D=1` families.
-4. Retain only candidates with significant structural coefficients, stationary and invertible roots, and Ljung-Box p-values above `.05` at lags 12, 24, and 36.
-5. Test drift only as a nested addition to retained ordinary-difference models. Drift was not significant and was omitted.
-6. Compare eligible candidates against seasonal-naive and random-walk-with-drift benchmarks through expanding-window forecasts.
-7. Select the diagnostically adequate candidate with the lowest aggregate validation RMSE, using MAE, parsimony, and within-family AICc as supporting criteria.
-8. Refit the selected model to all 180 observations and generate a 24-month forecast with 80% and 95% prediction intervals.
+1. Review the price history for trend, seasonality, unusual movements, and changes in variability.
+2. Evaluate both month-to-month and year-over-year transformations instead of committing to one approach in advance.
+3. Screen eight SARIMA candidates supported by the patterns in the data.
+4. Remove candidates with unstable estimates, unhelpful terms, or remaining forecastable patterns in their errors.
+5. Test whether adding drift improves the retained models; omit it when it does not add measurable value.
+6. Compare the eligible candidates with seasonal-naive and random-walk-with-drift benchmarks.
+7. Select the model with the best overall rolling-origin RMSE, using MAE, simplicity, and within-family fit statistics as supporting evidence.
+8. Refit the selected model to the full history and produce a 24-month forecast with 80% and 95% planning ranges.
 
-The screening stage was intentionally broader than the final comparison. A brute-force high-order model was not included because its complexity was not supported by the identification patterns. The final comparison contains only candidates that met the predefined eligibility conditions rather than an arbitrary number of models.
+This design favors reliability over complexity. A higher-order brute-force model was not included because the data did not provide a business or statistical reason for the added complexity. Only models that passed the eligibility checks were allowed into the final comparison.
 
 ## Development
 
-The project is implemented entirely in R. [`analysis/chicken_sales_forecast.R`](analysis/chicken_sales_forecast.R) is the single reproducible entry point for data checks, exploratory analysis, model screening, validation, selection, diagnostics, and forecasting.
+The deliverable is a repeatable R pipeline rather than a one-time spreadsheet calculation. [`analysis/chicken_sales_forecast.R`](analysis/chicken_sales_forecast.R) is the single entry point for data checks, discovery, model comparison, validation, diagnostics, and forecasting.
 
-The script uses base R with the `forecast` and `fUnitRoots` packages. It reads the clean CSV and recreates the seven figures and consolidated result files. A database and application layer were not required because the project uses one small, versioned analytical dataset and produces static portfolio artifacts rather than a deployed forecasting service.
+The workflow uses base R with the `forecast` and `fUnitRoots` packages. One run reads the clean CSV and recreates the seven figures and consolidated result files. A database and application layer were not needed for this version because the project uses one small, version-controlled dataset and produces static decision-support outputs. If the forecast were operationalized, these layers could be added when automated data ingestion or self-service access becomes necessary.
 
 ```text
 .
-|-- analysis/   # Portable R analysis, screening, validation, and forecast pipeline
-|-- data/       # Clean monthly price series used by the script
-|-- figures/    # Exploratory, diagnostic, and forecast graphics
+|-- analysis/   # R pipeline for model comparison, validation, and forecasting
+|-- data/       # Clean monthly price series
+|-- figures/    # Discovery, diagnostic, and forecast visuals
 |-- report/     # Full written analysis
-|-- results/    # Screening, validation, estimates, tests, and forecasts
-`-- README.md   # Portfolio summary
+|-- results/    # Model screening, validation, and forecast outputs
+`-- README.md   # Business-facing project summary
 ```
 
 To reproduce the analysis, install the required packages:
@@ -83,44 +89,66 @@ Rscript analysis/chicken_sales_forecast.R
 
 ## Testing and Validation
 
-The pipeline asserts that the input contains 180 consecutive monthly observations with the expected fields and no missing values. Retained SARIMA candidates must have significant structural coefficients, stationary and invertible fitted roots, and Ljung-Box p-values above `.05` at lags 12, 24, and 36. Drift variants are evaluated as nested significance checks rather than assumed additions.
+Testing was designed to answer two questions: can the model be trusted technically, and would it have produced useful forecasts on historical data it had not yet seen?
 
-Forecast performance is evaluated through an expanding window with an initial 120-month training period, 37 forecast origins, and horizons from 1 through 24 months. RMSE and MAE are reported at horizons 1, 12, and 24 and across all available forecast errors.
+| Control | Business purpose |
+| --- | --- |
+| Input checks | Prevent incomplete, duplicated, or misaligned monthly data from entering the forecast |
+| Coefficient checks | Remove terms that do not contribute reliable information |
+| Root checks | Exclude unstable model structures |
+| Residual checks at 12, 24, and 36 months | Confirm that the model has not left recurring patterns unused |
+| Drift tests | Add a long-term drift term only when it provides measurable value |
+| Expanding-window backtest | Recreate how the model would perform as new months became available |
+| Benchmark comparison | Confirm that the added modeling effort improves on simpler forecasting choices |
 
-Eight theory-driven SARIMA candidates were screened. The lower-order ordinary-difference AR(1) model and all three seasonal-difference models retained residual dependence. Adding AR(3) or MA(1) to the ordinary-difference AR(2) structure produced nonsignificant coefficients without a diagnostic advantage. The following two models were the only eligible finalists:
+The backtest began with 120 months of training data and expanded across 37 forecast origins. Performance was measured from 1 through 24 months using RMSE and MAE, including dedicated checks at 1, 12, and 24 months.
 
-| Eligible candidate | Aggregate RMSE | Aggregate MAE | Diagnostic result |
+Eight SARIMA candidates entered screening. Models with remaining error patterns or unsupported additional terms were removed. Two candidates passed every eligibility check and advanced to the final comparison:
+
+| Eligible candidate | Aggregate RMSE | Aggregate MAE | Validation outcome |
 | --- | ---: | ---: | --- |
-| SARIMA(2,1,0) x (1,0,1)[12] | 5.604 | 4.528 | Passed coefficient, root, and residual checks |
-| SARIMA(2,1,0) x (1,0,0)[12] | 6.576 | 5.307 | Passed coefficient, root, and residual checks |
+| SARIMA(2,1,0) x (1,0,1)[12] | 5.604 | 4.528 | Best validated performance |
+| SARIMA(2,1,0) x (1,0,0)[12] | 6.576 | 5.307 | Eligible runner-up |
 
-The selected model also outperformed the random-walk-with-drift benchmark (`RMSE = 5.898`) and the seasonal-naive benchmark (`RMSE = 11.509`). This combination of diagnostic adequacy and rolling-origin performance supports the selection more strongly than information criteria alone.
+The selected model also outperformed the random-walk-with-drift benchmark (`RMSE = 5.898`) and the seasonal-naive benchmark (`RMSE = 11.509`). This indicates that the final model added useful forecast value beyond a simple continuation of the historical pattern.
 
 ## Results and Decision Support
 
 SARIMA(2,1,0) x (1,0,1)[12] without drift provided the best validated forecast performance among the eligible candidates. Its aggregate RMSE was 14.8% lower than the eligible runner-up and 5.0% lower than the random-walk-with-drift benchmark.
 
-| Result | Value |
+| Decision-support result | Value |
 | --- | --- |
 | Selected model | SARIMA(2,1,0) x (1,0,1)[12], without drift |
 | Validation design | Expanding window, 37 origins, 24-month horizon |
 | Aggregate RMSE | 5.604 cents per pound |
 | Aggregate MAE | 4.528 cents per pound |
-| Forecast horizon | August 2016-July 2018 |
+| Forecast period | August 2016-July 2018 |
 | First point forecast | 110.8 cents per pound |
+| Short-term low | 108.9 cents per pound in December 2016 |
 | Final point forecast | 114.9 cents per pound |
-| Final 95% prediction interval | 97.7-132.0 cents per pound |
+| Final 95% planning range | 97.7-132.0 cents per pound |
 
-The forecast provides a baseline price path and a range that can support budget scenarios, procurement timing discussions, and risk tolerances. The point forecast reaches a short-term low of 108.9 cents per pound in December 2016 and then rises with recurring fluctuations to 114.9 cents per pound by July 2018.
+The forecast supports several planning activities:
 
-The selected model has a seasonal AR estimate of 0.979 and a minimum AR root of 1.002. Although the fitted root remains outside the unit circle, its proximity to the boundary makes the seasonal behavior highly persistent and somewhat sensitive to small changes in the data or model specification. The widening long-horizon prediction intervals reinforce that these forecasts should be used as planning ranges rather than precise predictions of future market conditions.
+- **Budget baseline:** Use the point forecast as a shared starting assumption for expected chicken costs.
+- **Risk scenarios:** Use the 80% and 95% ranges to estimate reasonable upside and downside cost exposure.
+- **Procurement discussions:** Use the expected short-term dip and later increase as inputs to purchasing conversations, together with current market intelligence.
+- **Expectation setting:** Communicate that confidence decreases as the planning horizon extends.
 
-This is a historical forecasting case study rather than a production service. A production implementation would require refreshed price data, scheduled model re-estimation, monitoring of forecast errors and residual autocorrelation, and alerts for structural changes. Useful next steps include evaluating external predictors such as feed costs, energy prices, supply measures, and major market disruptions; comparing alternative forecasting methods; and recalibrating prediction intervals as new observations become available.
+The selected model has a seasonal AR estimate of 0.979 and a minimum AR root of 1.002. The root remains valid but is close to the stability boundary, making the seasonal pattern highly persistent and somewhat sensitive to changes in the data or model specification. This sensitivity and the widening long-range intervals mean the forecast should guide scenarios rather than serve as a fixed purchasing commitment.
+
+### Limitations and production considerations
+
+- The history ends in July 2016, so current business use would require a refreshed and comparable price source.
+- The model cannot anticipate external shocks because it does not include supply, feed-cost, energy, weather, or policy variables.
+- Long-range intervals widen materially and should be reflected in contingency budgets.
+- A production version should automate data-quality checks, scheduled refitting, forecast-error monitoring, and alerts for structural changes.
+- Future development could test external business drivers, compare additional forecasting methods, and recalibrate the planning ranges as new outcomes become available.
 
 ### Key deliverables
 
 - [Full project report](report/chicken_sales_time_series_report.docx)
-- [Portable R analysis](analysis/chicken_sales_forecast.R)
+- [Reproducible R pipeline](analysis/chicken_sales_forecast.R)
 - [Candidate screening](results/candidate_screening.csv)
 - [Rolling-origin validation](results/rolling_validation.csv)
 - [Finalist comparison](results/finalist_comparison.csv)
@@ -128,4 +156,4 @@ This is a historical forecasting case study rather than a production service. A 
 
 ### Tools and methods
 
-R; `forecast`; `fUnitRoots`; SARIMA modeling; ACF/PACF analysis; augmented Dickey-Fuller testing; Ljung-Box diagnostics; expanding-window forecast validation; benchmark comparison; prediction intervals.
+R; `forecast`; `fUnitRoots`; SARIMA forecasting; ACF/PACF analysis; augmented Dickey-Fuller testing; Ljung-Box diagnostics; expanding-window validation; benchmark comparison; prediction intervals.
